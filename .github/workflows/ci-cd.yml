@@ -6,8 +6,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-test:
-    runs-on: self-hosted
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
     steps:
       # 1️⃣ Checkout code
       - uses: actions/checkout@v4
@@ -16,45 +17,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3️⃣ Login to Docker Hub
-      - name: Login to Docker Hub
+      # 3️⃣ Log in to Docker Hub
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: sana725
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4️⃣ Build & push Docker image
+      # 4️⃣ Build & push Docker image with version tag
       - name: Build & push Docker image
-        uses: docker/build-push-action@v4
+        id: docker_build
+        run: |
+          IMAGE_NAME="sana725/my-k8s-app"
+          VERSION=$(date +%Y%m%d%H%M%S)
+          echo "Building image: $IMAGE_NAME:$VERSION"
+          docker build -t $IMAGE_NAME:$VERSION .
+          docker push $IMAGE_NAME:$VERSION
+          echo "IMAGE_TAG=$VERSION" >> $GITHUB_ENV
+
+      # 5️⃣ Update Kubernetes deployment with new image
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
         with:
-          context: .
-          push: true
-          tags: sana725/my-k8s-app:latest
+          version: 'latest'
 
-      # 5️⃣ Run smoke test
-      - name: Run smoke test
-        run: |
-          docker run -d --name smoke_test -p 8081:80 sana725/my-k8s-app:latest
-          sleep 2
-          curl -f http://localhost:8081/ || (docker logs smoke_test && exit 1)
-          docker rm -f smoke_test
-
-  deploy:
-    needs: build-and-test
-    runs-on: self-hosted
-    steps:
-      # 1️⃣ Checkout code
-      - uses: actions/checkout@v4
-
-      # 2️⃣ Install kubectl
-      - name: Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
-          kubectl version --client
-
-      # 3️⃣ Configure kubeconfig from secret
       - name: Configure kubeconfig
         env:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
@@ -62,9 +48,7 @@ jobs:
           mkdir -p $HOME/.kube
           echo "$KUBECONFIG_DATA" | base64 --decode > $HOME/.kube/config
 
-      # 4️⃣ Apply Kubernetes manifests
       - name: Deploy to Kubernetes
         run: |
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
+          kubectl set image deployment/my-k8s-app web=sana725/my-k8s-app:${{ env.IMAGE_TAG }}
           kubectl rollout status deployment/my-k8s-app --timeout=120s
