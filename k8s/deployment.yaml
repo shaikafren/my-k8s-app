@@ -16,6 +16,8 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/shaikafren/my-k8s-app:latest
+          image: sana725/my-k8s-app:latest
           ports:
             - containerPort: 80
+
+
