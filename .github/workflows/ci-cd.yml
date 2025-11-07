@@ -20,7 +20,7 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: sana725
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # 4️⃣ Build & push Docker image
@@ -29,12 +29,12 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/my-k8s-app:latest
+          tags: sana725/my-k8s-app:latest
 
       # 5️⃣ Run smoke test
       - name: Run smoke test
         run: |
-          docker run -d --name smoke_test -p 8081:80 ${{ secrets.DOCKERHUB_USERNAME }}/my-k8s-app:latest
+          docker run -d --name smoke_test -p 8081:80 sana725/my-k8s-app:latest
           sleep 2
           curl -f http://localhost:8081/ || (docker logs smoke_test && exit 1)
           docker rm -f smoke_test
