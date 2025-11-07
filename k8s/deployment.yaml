@@ -17,6 +17,7 @@ spec:
       containers:
         - name: web
           image: sana725/my-k8s-app:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
 
