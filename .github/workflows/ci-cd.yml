@@ -9,28 +9,32 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
+      # 1️⃣ Checkout code
       - uses: actions/checkout@v4
 
+      # 2️⃣ Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      # 3️⃣ Login to Docker Hub
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # 4️⃣ Build & push Docker image
       - name: Build & push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/my-k8s-app:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/my-k8s-app:latest
 
+      # 5️⃣ Run smoke test
       - name: Run smoke test
         run: |
-          docker run -d --name smoke_test -p 8081:80 ghcr.io/${{ github.repository_owner }}/my-k8s-app:latest
+          docker run -d --name smoke_test -p 8081:80 ${{ secrets.DOCKERHUB_USERNAME }}/my-k8s-app:latest
           sleep 2
           curl -f http://localhost:8081/ || (docker logs smoke_test && exit 1)
           docker rm -f smoke_test
@@ -39,17 +43,24 @@ jobs:
     needs: build-and-test
     runs-on: ubuntu-latest
     steps:
+      # 1️⃣ Checkout code
       - uses: actions/checkout@v4
+
+      # 2️⃣ Set up kubectl
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: 'latest'
+
+      # 3️⃣ Configure kubeconfig from secret
       - name: Configure kubeconfig
         env:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
         run: |
           echo "$KUBECONFIG_DATA" | base64 --decode > $HOME/.kube/config
-      - name: Apply manifests
+
+      # 4️⃣ Apply Kubernetes manifests
+      - name: Deploy to Kubernetes
         run: |
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
