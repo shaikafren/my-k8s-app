@@ -1,4 +1,4 @@
-name: CI/CD
+name: CI/CD Pipeline for My K8s App
 
 on:
   push:
@@ -7,48 +7,58 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
-
+    runs-on: self-hosted  # Uses your EC2 runner
     steps:
       # 1️⃣ Checkout code
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       # 2️⃣ Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3️⃣ Log in to Docker Hub
-      - name: Log in to Docker Hub
+      # 3️⃣ Login to Docker Hub
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: sana725
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4️⃣ Build & push Docker image with version tag
+      # 4️⃣ Build & Push Docker image
       - name: Build & push Docker image
-        id: docker_build
-        run: |
-          IMAGE_NAME="sana725/my-k8s-app"
-          VERSION=$(date +%Y%m%d%H%M%S)
-          echo "Building image: $IMAGE_NAME:$VERSION"
-          docker build -t $IMAGE_NAME:$VERSION .
-          docker push $IMAGE_NAME:$VERSION
-          echo "IMAGE_TAG=$VERSION" >> $GITHUB_ENV
-
-      # 5️⃣ Update Kubernetes deployment with new image
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+        uses: docker/build-push-action@v4
         with:
-          version: 'latest'
+          context: .
+          push: true
+          tags: sana725/my-k8s-app:latest
 
-      - name: Configure kubeconfig
-        env:
-          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+      # 5️⃣ Verify Docker image (Optional sanity check)
+      - name: Verify Docker image locally
         run: |
-          mkdir -p $HOME/.kube
-          echo "$KUBECONFIG_DATA" | base64 --decode > $HOME/.kube/config
+          docker run -d --name test -p 8081:80 sana725/my-k8s-app:latest
+          sleep 3
+          curl -f http://localhost:8081 || (docker logs test && exit 1)
+          docker rm -f test
 
+      # 6️⃣ Set up kubectl (download directly, not Azure)
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      # 7️⃣ Deploy to Kubernetes (EC2 runner already has access to private cluster)
       - name: Deploy to Kubernetes
         run: |
-          kubectl set image deployment/my-k8s-app web=sana725/my-k8s-app:${{ env.IMAGE_TAG }}
+          echo "Deploying to Kubernetes..."
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
           kubectl rollout status deployment/my-k8s-app --timeout=120s
+
+      # 8️⃣ Confirm Deployment
+      - name: Verify Deployment
+        run: |
+          echo "Pods status:"
+          kubectl get pods -o wide
+          echo "Service info:"
+          kubectl get svc
